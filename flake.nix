@@ -1,13 +1,26 @@
 {
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+  inputs = {
+    naersk.url = "github:nix-community/naersk";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+  };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, naersk, nixpkgs }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
+
       forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
+
       nixpkgsFor = forAllSystems (system: import nixpkgs {
         inherit system;
       });
+
+      derivation = pkgs:
+        let naersk' = pkgs.callPackage naersk { };
+        in
+        naersk'.buildPackage {
+          src = ./.;
+          meta.mainProgram = "mqttooth";
+        };
     in
     {
       devShell = forAllSystems (system:
@@ -24,5 +37,16 @@
             pkgs.rustfmt
           ];
         });
+
+      packages = forAllSystems (system:
+        let pkgs = nixpkgsFor.${system};
+        in {
+          default = derivation pkgs;
+        }
+      );
+
+      overlay = final: prev: {
+        mqttooth = derivation final;
+      };
     };
 }
