@@ -19,6 +19,8 @@
         in
         naersk'.buildPackage {
           src = ./.;
+          nativeBuildInputs = [ pkgs.pkg-config ];
+          buildInputs = [ pkgs.dbus ];
           meta.mainProgram = "mqttooth";
         };
     in
