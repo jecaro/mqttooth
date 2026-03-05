@@ -39,16 +39,19 @@ struct Args {
 const ENVIRONMENTAL_SENSING_SERVICE_UUID: Uuid =
     Uuid::from_u128(0x0000181a_0000_1000_8000_00805f9b34fb);
 const TEMPERATURE_CHAR_UUID: Uuid = Uuid::from_u128(0x00002a6e_0000_1000_8000_00805f9b34fb);
+const HUMIDITY_CHAR_UUID: Uuid = Uuid::from_u128(0x00002a6f_0000_1000_8000_00805f9b34fb);
 
 #[derive(Debug, Deserialize)]
-struct TemperaturePayload {
+struct SensorPayload {
     temperature: Option<f64>,
+    humidity: Option<f64>,
 }
 
-/// Shared state for the current temperature
+/// Shared state for sensor readings
 #[derive(Debug, Default)]
 struct AppState {
     current_temperature: f64,
+    current_humidity: f64,
 }
 
 async fn run_mqtt_client(
@@ -63,15 +66,19 @@ async fn run_mqtt_client(
     loop {
         match eventloop.poll().await {
             Ok(Event::Incoming(Packet::Publish(publish))) => {
-                let payload: TemperaturePayload = serde_json::from_slice(&publish.payload)?;
-                let temperature = payload
-                    .temperature
-                    .ok_or_else(|| anyhow::anyhow!("Missing temperature field"))?;
+                let payload: SensorPayload = serde_json::from_slice(&publish.payload)?;
 
                 let mut state = state.write().await;
-                state.current_temperature = temperature;
 
-                info!("Temperature updated: {:.2}°C", temperature);
+                if let Some(temperature) = payload.temperature {
+                    state.current_temperature = temperature;
+                    info!("Temperature updated: {:.2}°C", temperature);
+                }
+
+                if let Some(humidity) = payload.humidity {
+                    state.current_humidity = humidity;
+                    info!("Humidity updated: {:.2}%", humidity);
+                }
             }
             Ok(Event::Incoming(Packet::ConnAck(_))) => {
                 info!("Connected to MQTT broker");
@@ -88,9 +95,16 @@ fn encode_temperature(temperature: f64) -> Vec<u8> {
     value.to_le_bytes().to_vec()
 }
 
+/// Encode humidity as BLE uint16 (0.01 % resolution)
+fn encode_humidity(humidity: f64) -> Vec<u8> {
+    let value = (humidity * 100.0) as u16;
+    value.to_le_bytes().to_vec()
+}
+
 fn create_application(state: Arc<RwLock<AppState>>) -> Application {
-    let characteristic_read = move |_req: CharacteristicReadRequest| {
-        let state = state.clone();
+    let temp_state = state.clone();
+    let temperature_read = move |_req: CharacteristicReadRequest| {
+        let state = temp_state.clone();
         async move {
             let state = state.read().await;
             info!(
@@ -102,19 +116,43 @@ fn create_application(state: Arc<RwLock<AppState>>) -> Application {
         .boxed()
     };
 
+    let humidity_read = move |_req: CharacteristicReadRequest| {
+        let state = state.clone();
+        async move {
+            let state = state.read().await;
+            info!(
+                "Read request, returning humidity: {:.2}%",
+                state.current_humidity
+            );
+            Ok(encode_humidity(state.current_humidity))
+        }
+        .boxed()
+    };
+
     Application {
         services: vec![Service {
             uuid: ENVIRONMENTAL_SENSING_SERVICE_UUID,
             primary: true,
-            characteristics: vec![Characteristic {
-                uuid: TEMPERATURE_CHAR_UUID,
-                read: Some(CharacteristicRead {
-                    read: true,
-                    fun: Box::new(characteristic_read),
+            characteristics: vec![
+                Characteristic {
+                    uuid: TEMPERATURE_CHAR_UUID,
+                    read: Some(CharacteristicRead {
+                        read: true,
+                        fun: Box::new(temperature_read),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
+                },
+                Characteristic {
+                    uuid: HUMIDITY_CHAR_UUID,
+                    read: Some(CharacteristicRead {
+                        read: true,
+                        fun: Box::new(humidity_read),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }],
         ..Default::default()
