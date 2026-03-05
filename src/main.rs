@@ -3,6 +3,7 @@ use bluer::Uuid;
 use bluer::gatt::local::{
     Application, Characteristic, CharacteristicRead, CharacteristicReadRequest, Service,
 };
+use clap::Parser;
 use futures::FutureExt;
 use log::info;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
@@ -10,12 +11,29 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-// MQTT Config
-const MQTT_BROKER: &str = "localhost";
-const MQTT_PORT: u16 = 1883;
+#[derive(Parser, Debug)]
+#[command(name = "mqttooth", about = "Bridge MQTT temperature data to BLE")]
+struct Args {
+    /// MQTT broker host
+    #[arg(long, default_value = "localhost")]
+    mqtt_host: String,
 
-// Change this to your zigbee2mqtt device topic
-const ZIGBEE_DEVICE_TOPIC: &str = "zigbee2mqtt/Temperature 1";
+    /// MQTT broker port
+    #[arg(long, default_value_t = 1883)]
+    mqtt_port: u16,
+
+    /// MQTT client ID
+    #[arg(long, default_value = "mqttooth")]
+    mqtt_client_id: String,
+
+    /// Zigbee2MQTT device topic to subscribe to
+    #[arg(long, default_value = "zigbee2mqtt/Temperature 1")]
+    zigbee_topic: String,
+
+    /// Device name for BLE advertising
+    #[arg(long, default_value = "mqttooth")]
+    device_name: String,
+}
 
 // BLE UUIDs (using standard Environmental Sensing service)
 const ENVIRONMENTAL_SENSING_SERVICE_UUID: Uuid =
@@ -33,13 +51,14 @@ struct AppState {
     current_temperature: f64,
 }
 
-async fn run_mqtt_client(state: Arc<RwLock<AppState>>) -> anyhow::Result<()> {
-    let mqttoptions = MqttOptions::new("mqttooth", MQTT_BROKER, MQTT_PORT);
-    let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
-    client
-        .subscribe(ZIGBEE_DEVICE_TOPIC, QoS::AtMostOnce)
-        .await?;
-    info!("Subscribed to {}", ZIGBEE_DEVICE_TOPIC);
+async fn run_mqtt_client(
+    state: Arc<RwLock<AppState>>,
+    mqtt_options: MqttOptions,
+    zigbee_topic: String,
+) -> anyhow::Result<()> {
+    let (client, mut eventloop) = AsyncClient::new(mqtt_options, 10);
+    client.subscribe(&zigbee_topic, QoS::AtMostOnce).await?;
+    info!("Subscribed to {}", zigbee_topic);
 
     loop {
         match eventloop.poll().await {
@@ -102,7 +121,7 @@ fn create_application(state: Arc<RwLock<AppState>>) -> Application {
     }
 }
 
-async fn run_ble_server(state: Arc<RwLock<AppState>>) -> anyhow::Result<()> {
+async fn run_ble_server(state: Arc<RwLock<AppState>>, device_name: String) -> anyhow::Result<()> {
     let session = bluer::Session::new().await?;
     let adapter = session.default_adapter().await?;
     adapter.set_powered(true).await?;
@@ -122,13 +141,13 @@ async fn run_ble_server(state: Arc<RwLock<AppState>>) -> anyhow::Result<()> {
         service_uuids: vec![ENVIRONMENTAL_SENSING_SERVICE_UUID]
             .into_iter()
             .collect(),
-        local_name: Some("TempBridge".to_string()),
+        local_name: Some(device_name.clone()),
         discoverable: Some(true),
         ..Default::default()
     };
 
     let _adv_handle = adapter.advertise(le_advertisement).await?;
-    info!("BLE GATT server started - advertising as 'TempBridge'");
+    info!("BLE GATT server started - advertising as '{}'", device_name);
 
     // Block forever
     std::future::pending().await
@@ -138,13 +157,25 @@ async fn run_ble_server(state: Arc<RwLock<AppState>>) -> anyhow::Result<()> {
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
+    let args = Args::parse();
+
     info!("Starting MQTTooth bridge...");
+    info!(
+        "Connecting to MQTT broker at {}:{}",
+        args.mqtt_host, args.mqtt_port
+    );
 
     let state = Arc::new(RwLock::new(AppState::default()));
+    let mqtt_options = MqttOptions::new(args.mqtt_client_id, args.mqtt_host, args.mqtt_port);
 
     tokio::select! {
-        result = run_mqtt_client(state.clone()) => result.context("MQTT client failed"),
-        result = run_ble_server(state) => result.context("BLE server failed"),
+        result = run_mqtt_client(
+            state.clone(),
+            mqtt_options,
+            args.zigbee_topic
+        ) => result.context("MQTT client failed"),
+
+        result = run_ble_server(state, args.device_name) => result.context("BLE server failed"),
         _ = tokio::signal::ctrl_c() => {
             info!("Shutting down...");
             Ok(())
