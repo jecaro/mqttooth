@@ -50,8 +50,8 @@ struct SensorPayload {
 /// Shared state for sensor readings
 #[derive(Debug, Default)]
 struct AppState {
-    current_temperature: f64,
-    current_humidity: f64,
+    temperature: Option<f64>,
+    humidity: Option<f64>,
 }
 
 async fn run_mqtt_client(
@@ -74,12 +74,12 @@ async fn run_mqtt_client(
                 let mut state = state.write().await;
 
                 if let Some(temperature) = payload.temperature {
-                    state.current_temperature = temperature;
+                    state.temperature = Some(temperature);
                     info!("Temperature updated: {:.2}°C", temperature);
                 }
 
                 if let Some(humidity) = payload.humidity {
-                    state.current_humidity = humidity;
+                    state.humidity = Some(humidity);
                     info!("Humidity updated: {:.2}%", humidity);
                 }
             }
@@ -110,11 +110,16 @@ fn create_application(state: Arc<RwLock<AppState>>) -> Application {
         let state = temp_state.clone();
         async move {
             let state = state.read().await;
-            info!(
-                "Read request, returning temperature: {:.2}°C",
-                state.current_temperature
-            );
-            Ok(encode_temperature(state.current_temperature))
+            match state.temperature {
+                Some(temperature) => {
+                    info!("Read request, returning temperature: {:.2}°C", temperature);
+                    Ok(encode_temperature(temperature))
+                }
+                None => {
+                    info!("Read request, but no temperature available yet");
+                    Err(bluer::gatt::local::ReqError::NotSupported)
+                }
+            }
         }
         .boxed()
     };
@@ -123,11 +128,16 @@ fn create_application(state: Arc<RwLock<AppState>>) -> Application {
         let state = state.clone();
         async move {
             let state = state.read().await;
-            info!(
-                "Read request, returning humidity: {:.2}%",
-                state.current_humidity
-            );
-            Ok(encode_humidity(state.current_humidity))
+            match state.humidity {
+                Some(humidity) => {
+                    info!("Read request, returning humidity: {:.2}%", humidity);
+                    Ok(encode_humidity(humidity))
+                }
+                None => {
+                    info!("Read request, but no humidity available yet");
+                    Err(bluer::gatt::local::ReqError::NotSupported)
+                }
+            }
         }
         .boxed()
     };
