@@ -66,6 +66,9 @@ async fn run_mqtt_client(
     loop {
         match eventloop.poll().await {
             Ok(Event::Incoming(Packet::Publish(publish))) => {
+                let raw_payload = String::from_utf8_lossy(&publish.payload);
+                log::debug!("Received payload: {}", raw_payload);
+
                 let payload: SensorPayload = serde_json::from_slice(&publish.payload)?;
 
                 let mut state = state.write().await;
