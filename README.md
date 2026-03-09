@@ -28,6 +28,7 @@ flowchart LR
 ```
 
 [crates-png]: https://img.shields.io/crates/v/mqttooth
+[crates]: https://crates.io/crates/mqttooth
 [status-png]: https://github.com/jecaro/mqttooth/actions/workflows/nix-build.yml/badge.svg
 [status]: https://github.com/jecaro/mqttooth/actions
 [zigbee2mqtt]: https://www.zigbee2mqtt.io/

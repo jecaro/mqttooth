@@ -1,7 +1,20 @@
 [package]
 name = "mqttooth"
+authors = ["Jean-Charles Quillet <jeancharles.quillet@gmail.com>"]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "An MQTT to Bluetooth Low Energy bridge"
+readme = "README.md"
+homepage = "https://github.com/jecaro/mqttooth"
+repository = "https://github.com/jecaro/mqttooth"
+keywords = ["cli", "mqtt", "ble", "iot"]
+categories = ["command-line-utilities"]
+exclude = [
+    "flake.nix",
+    "flake.lock",
+    "badger.jpg",
+]
 
 [dependencies]
 anyhow = "1.0.102"
