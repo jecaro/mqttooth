@@ -1,6 +1,7 @@
 # mqttooth
 
 [![CI][status-png]][status]
+[![crates][crates-png]][crates]
 
 `mqttooth` is the server-side companion for the `mqttooth` app running on
 the Pimoroni Badger 2350 e-ink display. See [my 
@@ -26,6 +27,7 @@ flowchart LR
     B <-->|MQTT| E[HomeAssistant]
 ```
 
+[crates-png]: https://img.shields.io/crates/v/mqttooth
 [status-png]: https://github.com/jecaro/mqttooth/actions/workflows/nix-build.yml/badge.svg
 [status]: https://github.com/jecaro/mqttooth/actions
 [zigbee2mqtt]: https://www.zigbee2mqtt.io/
