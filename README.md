@@ -9,7 +9,8 @@ fork](https://github.com/jecaro/badger2350) of the Badger repository for
 installing it on your device.
 
 <p align="center">
-  <img src="badger.jpg">
+  <img src="./images/mqttooth-simple.jpg">
+  <img src="./images/mqttooth-chart.jpg">
 </p>
 
 `mqttooth` is a bridge that subscribes to MQTT topics ([zigbee2mqtt]) and 
